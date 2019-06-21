@@ -1,0 +1,144 @@
+/**
+ * @file alist.c
+ */
+
+#include <stdlib.h>
+#include <string.h>
+#include "alist.h"
+
+void
+alist_init(alist_t *list) {
+    memset(list, 0, sizeof(*list));
+}
+
+void
+alist_free(alist_t *list) {
+    alist_free_func(list, NULL);
+}
+
+void
+alist_free_func(alist_t *list, void (*free_func)(void *)) {
+    unsigned int i;
+
+    if (list->items != NULL) {
+        for (i = 0; i < list->size; i++) {
+            if (free_func != NULL) {
+                free_func(list->items[i].data);
+            }
+        }
+
+        free(list->items);
+    }
+
+    memset(list, 0, sizeof(*list));
+}
+
+unsigned int
+alist_size(alist_t *list) {
+    return list->size;
+}
+
+static bool
+alist_grow(alist_t *list) {
+    alist_item_t *new_items;
+    unsigned int new_capacity;
+
+    new_capacity = list->capacity == 0 ? ALIST_CAPACITY_INITIAL : list->capacity * 2;
+    new_items = realloc(list->items, sizeof(alist_item_t) * new_capacity);
+    if (new_items == NULL) {
+        return false;
+    }
+
+    list->items = new_items;
+    list->capacity = new_capacity;
+
+    return true;
+}
+
+bool
+alist_add(alist_t *list, void *data) {
+    if (list->size >= list->capacity) {
+        if (!alist_grow(list)) {
+            return false;
+        }
+    }
+
+    list->items[list->size++].data = data;
+    return true;
+}
+
+bool
+alist_insert(alist_t *list, unsigned int index, void *data) {
+    if (index > list->size) {
+        return false;
+    }
+
+    if (list->size >= list->capacity) {
+        if (!alist_grow(list)) {
+            return false;
+        }
+    }
+
+    memmove(list->items + index + 1, list->items + index, sizeof(alist_item_t) * (list->size - index));
+    list->items[index].data = data;
+    ++list->size;
+
+    return true;
+}
+
+void *
+alist_get(alist_t *list, unsigned int index) {
+    return index < list->size ? list->items[index].data : NULL;
+}
+
+void *
+alist_first(alist_t *list) {
+    return alist_get(list, 0);
+}
+
+void *
+alist_last(alist_t *list) {
+    return alist_get(list, list->size - 1);
+}
+
+void *
+alist_remove(alist_t *list, unsigned int index) {
+    void *data;
+
+    if (index >= list->size) {
+        return NULL;
+    }
+
+    data = list->items[index].data;
+    --list->size;
+
+    if (index < list->size && list->size - index > 0) {
+        memmove(list->items + index, list->items + index + 1, sizeof(alist_item_t) * (list->size - index));
+    }
+
+    return data;
+}
+
+bool
+alist_remove_func(alist_t *list, unsigned int index, void (*free_func)(void *)) {
+    void *data;
+
+    data = alist_remove(list, index);
+    if (data != NULL) {
+        free_func(data);
+        return true;
+    }
+
+    return false;
+}
+
+void
+alist_foreach(alist_t *list, bool (*iterate_func)(void *, unsigned int)) {
+    unsigned int i;
+
+    for (i = 0; i < list->size; i++) {
+        if (!iterate_func(list->items[i].data, i)) {
+            break;
+        }
+    }
+}
