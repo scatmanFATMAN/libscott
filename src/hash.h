@@ -48,23 +48,12 @@
 
 #include <stdio.h>
 #include <stdbool.h>
-#include "alist.h"
 
 #define HASH_DJB2 1         //!< Hash function DJBM2
 #define HASH_SDBM 2         //!< Hash function SDBM
 #define HASH_FUNC HASH_DJB2 //!< Which hash function to use
 
-/** 
- * @brief The hash structure.
- *
- * This structure represnts the hash table. Members of this structure should
- * not be accessed or, more importantly, changed directly.
- */
-typedef struct {
-    alist_t *buckets;       //!< The list of buckets for the hash.
-    unsigned int size;      //!< The current number of items in the hash.
-    unsigned int capacity;  //!< The maximum capacity of buckets.
-} hash_t;
+typedef struct hash_t hash_t;
 
 /**
  * @brief Initializes a hash table.
@@ -73,9 +62,10 @@ typedef struct {
  * another hash function is called before this, undefined behavior will occur
  * and it's very likely your program will crash.
  *
- * @param[in] hash The hash.
+ * @return A pointer to the hash or <tt>NULL</tt> if not enough memory was
+ * available.
  */
-void hash_init(hash_t *hash);
+hash_t * hash_init();
 
 /**
  * @brief Initializes a hash table with the given capacity.
@@ -84,11 +74,11 @@ void hash_init(hash_t *hash);
  * another hash function is called before this, undefined behavior will occur
  * and it's very likely your program will crash.
  *
- * @param[in] hash The hash.
  * @param[in] capacity The initial capacity.
- * @return <tt>true</tt>, otherwise <tt>false</tt> if not enough memory is available.
+ * @return A pointer to the hash or <tt>NULL</tt> if not enough memory was
+ * available.
  */
-bool hash_init2(hash_t *hash, unsigned int capacity);
+hash_t * hash_init_ex(unsigned int capacity);
 
 /**
  * @brief Frees internal memory used by the hash and reduces the hash size to
@@ -220,15 +210,3 @@ bool hash_delete_func(hash_t *hash, const char *key, void (*free_func)(void *));
  * @return <tt>true</tt> if the iteration completely finished, otherwise <tt>false</tt>.
  */
 bool hash_foreach(hash_t *hash, bool (*iterate_func)(const char *, void *, void *), void *user_data);
-
-/**
- * @brief Prints the hash to the file stream identified by <tt>f</tt>.
- *
- * Iterates over the each item in the hash and prints the key to
- * the file stream identified by <tt>f</tt>. The hash's size and max capacity
- * is also printed to <tt>f</tt>.
- *
- * @param[in] hash The hash.
- * @param[in] f    The file stream.
- */
-void hash_print(hash_t *hash, FILE *f);

@@ -20,25 +20,7 @@
 
 #define ALIST_CAPACITY_INITIAL 256 //!< The default capacity of the list.
 
-/**
- * @brief An array list item.
- *
- * This structure represnts the data in the array list.
- */
-typedef struct {
-    void *data; //!< A pointer to the data in the list.
-} alist_item_t;
-
-/**
- * @brief The array list.
- *
- * This structure represents the array list.
- */
-typedef struct {
-    alist_item_t *items;    //!< The array of items.   
-    unsigned int size;      //!< The size of the array list.
-    unsigned int capacity;  //!< The capacity of the array list.
-} alist_t;
+typedef struct alist_t alist_t;
 
 /**
  * @brief Initializes the array list.
@@ -47,9 +29,10 @@ typedef struct {
  * This will initialize the size and capacity to 0, so the first addition to
  * the array list will allocate room for #ALIST_CAPACITY_INITIAL items.
  *
- * @param[in] list The array list.
+ * @return A pointer to the list, or <tt>NULL</tt> if not enough memory was
+ * available.
  */
-void alist_init(alist_t *list);
+alist_t * alist_init();
 
 /**
  * @brief Frees the array list.

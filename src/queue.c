@@ -6,9 +6,40 @@
 #include <string.h>
 #include "queue.h"
 
-void
-queue_init(queue_t *queue) {
-    memset(queue, 0, sizeof(*queue));
+/**
+ * @brief The queue node structure.
+ *
+ * This structure represents the node that make up the queue. The
+ * <tt>data</tt> pointer is a pointer to the user data. The <tt>prev</tt> node
+ * pointer points to the previous node in the queue, and for the first node in
+ * the queue, points to NULL. The <tt>next</tt> node pointer points to the
+ * next node in the queue, and for the last node in queue, points to NULL.
+ */
+typedef struct queue_node_t {
+    void *data;                 //!< The user data.
+    struct queue_node_t *prev;  //!< The previous node in the queue.
+    struct queue_node_t *next;  //!< The next node in the queue.
+} queue_node_t;
+
+/**
+ * @brief The queue structure.
+ *
+ * This structure represents the queue itself with sentinel head and tail
+ * nodes, providing quick access to either end of the queue.
+ */
+struct queue_t {
+    queue_node_t *head; //!< Points to the first node in the queue.
+    queue_node_t *tail; //!< Points to the last node in the queue.
+    unsigned int size;  //!< The number of nodes in the queue.
+};
+
+queue_t *
+queue_init() {
+    queue_t *queue;
+
+    queue = calloc(1, sizeof(*queue));
+
+    return queue;
 }
 
 void
@@ -19,6 +50,10 @@ queue_free(queue_t *queue) {
 void
 queue_free_func(queue_t *queue, void (*free_func)(void *)) {
     queue_node_t *node, *del;
+
+    if (queue == NULL) {
+        return;
+    }
 
     node = queue->head;
     while (node != NULL) {
@@ -32,7 +67,7 @@ queue_free_func(queue_t *queue, void (*free_func)(void *)) {
         free(del);
     }
 
-    memset(queue, 0, sizeof(*queue));
+    free(queue);
 }
 
 unsigned int
@@ -86,7 +121,7 @@ queue_pop(queue_t *queue) {
     }
     else {
         queue->head = node->next;
-        node->prev = NULL;
+        queue->head->prev = NULL;
     }
 
     free(node);

@@ -71,18 +71,20 @@ buffer_init_ex(size_t capacity) {
 
 void
 buffer_free(buffer_t *buffer) {
-    if (buffer != NULL) {
-        if (buffer->data != NULL) {
-            if (buffer->flags & BUFFER_FLAGS_SECURE) {
-                memset(buffer->data, 0, buffer->capacity);
-                buffer_security_remove(buffer->data, buffer->capacity);
-            }
+    if (buffer == NULL) {
+        return;
+    }
 
-            free(buffer->data);
+    if (buffer->data != NULL) {
+        if (buffer->flags & BUFFER_FLAGS_SECURE) {
+            memset(buffer->data, 0, buffer->capacity);
+            buffer_security_remove(buffer->data, buffer->capacity);
         }
 
-        free(buffer);
+        free(buffer->data);
     }
+
+    free(buffer);
 }
 
 static void

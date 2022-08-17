@@ -6,9 +6,33 @@
 #include <string.h>
 #include "alist.h"
 
-void
-alist_init(alist_t *list) {
-    memset(list, 0, sizeof(*list));
+/**
+ * @brief An array list item.
+ *
+ * This structure represnts the data in the array list.
+ */
+typedef struct {
+    void *data; //!< A pointer to the data in the list.
+} alist_item_t;
+
+/**
+ * @brief The array list.
+ *
+ * This structure represents the array list.
+ */
+struct alist_t {
+    alist_item_t *items;    //!< The array of items.   
+    unsigned int size;      //!< The size of the array list.
+    unsigned int capacity;  //!< The capacity of the array list.
+};
+
+alist_t *
+alist_init() {
+    alist_t *list;
+
+    list = calloc(1, sizeof(*list));
+
+    return list;
 }
 
 void
@@ -20,6 +44,10 @@ void
 alist_free_func(alist_t *list, void (*free_func)(void *)) {
     unsigned int i;
 
+    if (list == NULL) {
+        return;
+    }
+
     if (list->items != NULL) {
         for (i = 0; i < list->size; i++) {
             if (free_func != NULL) {
@@ -30,7 +58,7 @@ alist_free_func(alist_t *list, void (*free_func)(void *)) {
         free(list->items);
     }
 
-    memset(list, 0, sizeof(*list));
+    free(list);
 }
 
 unsigned int

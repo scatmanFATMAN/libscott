@@ -3,8 +3,20 @@
  */
 
 #include <stdlib.h>
-#include "string.h"
+#include <string.h>
+#include "alist.h"
 #include "hash.h"
+
+/**
+ * @brief The hash structure.
+ *
+ * This structure represnts the hash table.
+ */
+struct hash_t {
+    alist_t **buckets;       //!< The list of buckets for the hash.
+    unsigned int size;      //!< The current number of items in the hash.
+    unsigned int capacity;  //!< The maximum capacity of buckets.
+};
 
 /**
  * @brief The structure that represents each item in the hash.
@@ -52,21 +64,63 @@ hash_code(hash_t *hash, const char *key) {
 #endif
 }
 
+static void
+hash_free_buckets(hash_t *hash, void (*free_func)(void *)) {
+    hash_item_t *item;
+    unsigned int i;
+
+    if (hash->capacity == 0) {
+        return;
+    }
+
+    for (i = 0; i < hash->capacity; i++) {
+        while (alist_size(hash->buckets[i]) > 0) {
+            item = alist_remove(hash->buckets[i], 0);
+
+            if (free_func != NULL) {
+                free_func(item->data);
+            }
+
+            free(item->key);
+            free(item);
+        }
+
+        alist_free(hash->buckets[i]);
+    }
+
+    free(hash->buckets);
+}
+
 static bool
 hash_create(hash_t *hash, unsigned int capacity) {
+    bool success = true;
     unsigned int i;
 
     hash->capacity = capacity;
-    hash->buckets = malloc(sizeof(alist_t) * hash->capacity);
+    hash->buckets = calloc(hash->capacity, sizeof(alist_t *));
     if (hash->buckets == NULL) {
         return false;
     }
 
     for (i = 0; i < hash->capacity; i++) {
-        alist_init(&hash->buckets[i]);
+        hash->buckets[i] = alist_init();
+        if (hash->buckets[i] == NULL) {
+            success = false;
+            break;
+        }
     }
 
-    return true;
+    if (!success) {
+        for (i = 0; i < hash->capacity; i++) {
+            if (hash->buckets[i] != NULL) {
+                alist_free(hash->buckets[i]);
+            }
+        }
+
+        free(hash->buckets);
+    }
+
+    return success;
 }
 
 static bool
@@ -84,79 +138,66 @@ hash_rehash_func(const char *key, void *data, void *user_data) {
 
 static bool
 hash_rehash(hash_t *hash) {
-    hash_t tmp;
+    hash_t *tmp;
 
-    if (!hash_init2(&tmp, hash->capacity * 2)) {
+    tmp = hash_init_ex(hash->capacity * 2);
+    if (tmp == NULL) {
         return false;
     }
 
-    if (!hash_foreach(hash, hash_rehash_func, &tmp)) {
-        hash_free(&tmp);
+    if (!hash_foreach(hash, hash_rehash_func, tmp)) {
+        hash_free(tmp);
         return false;
     }
 
-    hash_free(hash);
-    hash->buckets = tmp.buckets;
-    hash->size = tmp.size;
-    hash->capacity = tmp.capacity;
+    hash_free_buckets(hash, NULL);
+    hash->buckets = tmp->buckets;
+    hash->size = tmp->size;
+    hash->capacity = tmp->capacity;
+
+    free(tmp);
 
     return true;
 }
     
-void
-hash_init(hash_t *hash) {
-    hash->buckets = NULL;
-    hash->size = 0;
-    hash->capacity = 0;
+hash_t *
+hash_init() {
+    return hash_init_ex(0);
 }
 
-bool
-hash_init2(hash_t *hash, unsigned int capacity) {
+hash_t *
+hash_init_ex(unsigned int capacity) {
+    hash_t *hash;
+
+    hash = calloc(1, sizeof(*hash));
+    if (hash == NULL) {
+        return NULL;
+    }
+
     hash->buckets = NULL;
     hash->size = 0;
 
-    return hash_create(hash, capacity);
+    if (!hash_create(hash, capacity)) {
+        free(hash);
+        return false;
+    }
+
+    return hash;
 }
 
 void
 hash_free(hash_t *hash) {
-    hash_item_t *item;
-    unsigned int i;
-
-    if (hash->capacity > 0) {
-        for (i = 0; i < hash->capacity; i++) {
-            while (alist_size(&hash->buckets[i]) > 0) {
-                item = alist_remove(&hash->buckets[i], 0);
-                free(item->key);
-                free(item);
-            }
-
-            alist_free(&hash->buckets[i]);
-        }
-
-        free(hash->buckets);
-    }
+    hash_free_func(hash, NULL);
 }
 
 void
 hash_free_func(hash_t *hash, void (*free_func)(void *)) {
-    hash_item_t *item;
-    unsigned int i;
-
-    if (hash->capacity > 0) {
-        for (i = 0; i < hash->capacity; i++) {
-            while (alist_size(&hash->buckets[i]) > 0) {
-                item = alist_remove(&hash->buckets[i], 0);
-                free_func(item->data);
-                free(item->key);
-                free(item);
-            }
-
-            alist_free(&hash->buckets[i]);
-        }
-
-        free(hash->buckets);
+    if (hash == NULL) {
+        return;
     }
+
+    hash_free_buckets(hash, free_func);
+    free(hash);
 }
 
 unsigned int
@@ -194,7 +235,7 @@ hash_set(hash_t *hash, const char *key, void *data) {
     item->data = data;
     code = hash_code(hash, key);
 
-    if (!alist_add(&hash->buckets[code], item)) {
+    if (!alist_add(hash->buckets[code], item)) {
         free(item->key);
         free(item);
         return false;
@@ -215,13 +256,14 @@ hash_get(hash_t *hash, const char *key) {
     unsigned int i, code;
     hash_item_t *item;
 
-    if (hash->capacity == 0)
+    if (hash->capacity == 0) {
         return NULL;
+    }
 
     code = hash_code(hash, key);
 
-    for (i = 0; i < alist_size(&hash->buckets[code]); i++) {
-        item = (hash_item_t *)alist_get(&hash->buckets[code], i);
+    for (i = 0; i < alist_size(hash->buckets[code]); i++) {
+        item = alist_get(hash->buckets[code], i);
 
         if (strcmp(item->key, key) == 0)
             return item->data;
@@ -238,12 +280,12 @@ hash_delete(hash_t *hash, const char *key) {
 
     code = hash_code(hash, key);
 
-    for (i = 0; i < alist_size(&hash->buckets[code]); i++) {
-        item = (hash_item_t *)alist_get(&hash->buckets[code], i);
+    for (i = 0; i < alist_size(hash->buckets[code]); i++) {
+        item = alist_get(hash->buckets[code], i);
 
         if (strcmp(item->key, key) == 0) {
             data = item->data;
-            alist_remove(&hash->buckets[code], i);
+            alist_remove(hash->buckets[code], i);
             free(item->key);
             free(item);
             --hash->size;
@@ -259,8 +301,9 @@ hash_delete_func(hash_t *hash, const char *key, void (*free_func)(void *)) {
     void *data;
 
     data = hash_delete(hash, key);
-    if (data == NULL)
+    if (data == NULL) {
         return false;
+    }
 
     free_func(data);
     return true;
@@ -272,8 +315,8 @@ hash_foreach(hash_t *hash, bool (*iterate_func)(const char *, void *, void *), v
     hash_item_t *item;
 
     for (i = 0; i < hash->capacity; i++) {
-        for (j = 0; j < alist_size(&hash->buckets[i]); j++) {
-            item = (hash_item_t *)alist_get(&hash->buckets[i], j);
+        for (j = 0; j < alist_size(hash->buckets[i]); j++) {
+            item = (hash_item_t *)alist_get(hash->buckets[i], j);
 
             if (!iterate_func(item->key, item->data, user_data)) {
                 return false;
@@ -282,27 +325,4 @@ hash_foreach(hash_t *hash, bool (*iterate_func)(const char *, void *, void *), v
     }
 
     return true;
-}
-
-void
-hash_print(hash_t *hash, FILE *f) {
-    unsigned int i, j;
-    hash_item_t *item;
-
-    fprintf(f, "Hash size: %u\n", hash->size);
-    fprintf(f, "Hash capacity: %u\n", hash->capacity);
-
-    for (i = 0; i < hash->capacity; i++) {
-        if (alist_size(&hash->buckets[i]) > 0) {
-            fprintf(f, "%u)", i);
-
-            for (j = 0; j < alist_size(&hash->buckets[i]); j++) {
-                item = (hash_item_t *)alist_get(&hash->buckets[i], j);
-
-                fprintf(f, " \"%s\"", item->key);
-            }
-
-            fprintf(f, "\n");
-        }
-    }
 }
