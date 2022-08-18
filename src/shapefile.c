@@ -179,6 +179,54 @@ shapefile_shape_free(shapefile_shape_t *shape) {
     free(shape);
 }
 
+char *
+shapefile_shape_null_wkt() {
+    return strdup("NULL");
+}
+
+char *
+shapefile_shape_point_wkt(shapefile_shape_point_t *point) {
+    char *wkt;
+    int len;
+
+    len = asprintf(&wkt, "POINT(%f %f)", point->x, point->y);
+    if (len == -1) {
+        return NULL;
+    }
+
+    return wkt;
+}
+
+char *
+shapefile_shape_wkt(shapefile_shape_t *shape) {
+    char *wkt = NULL;
+
+    switch (shape->type) {
+        case SHAPEFILE_TYPE_NULL:
+            wkt = shapefile_shape_null_wkt();
+            break;
+        case SHAPEFILE_TYPE_POINT:
+            wkt = shapefile_shape_point_wkt(shape->geometry);
+            break;
+        case SHAPEFILE_TYPE_POLYLINE:
+        case SHAPEFILE_TYPE_POLYGON:
+        case SHAPEFILE_TYPE_MULTIPOINT:
+        case SHAPEFILE_TYPE_POINT_Z:
+        case SHAPEFILE_TYPE_POLYLINE_Z:
+        case SHAPEFILE_TYPE_POLYGON_Z:
+        case SHAPEFILE_TYPE_MULTIPOINT_Z:
+        case SHAPEFILE_TYPE_POINT_M:
+        case SHAPEFILE_TYPE_POLYLINE_M:
+        case SHAPEFILE_TYPE_POLYGON_M:
+        case SHAPEFILE_TYPE_MULTIPOINT_M:
+        case SHAPEFILE_TYPE_MULTIPATCH:
+            break;
+    }
+
+    return wkt;
+}
+
+//TODO: handle partial reads and not EOF
 static bool
 shapefile_read(shapefile_t *shapefile, FILE *f, void *buf, size_t len, int32_t *length) {
     size_t count;
@@ -196,6 +244,7 @@ shapefile_read(shapefile_t *shapefile, FILE *f, void *buf, size_t len, int32_t *
     return true;
 }
 
+#if 0
 static bool
 shapefile_read_int16_be(shapefile_t *shapefile, FILE *f, int16_t *value, int32_t *length) {
     int16_t data;
@@ -207,6 +256,7 @@ shapefile_read_int16_be(shapefile_t *shapefile, FILE *f, int16_t *value, int32_t
     *value = be16toh(data);
     return true;
 }
+#endif
 
 static bool
 shapefile_read_int32_le(shapefile_t *shapefile, FILE *f, int32_t *value, int32_t *length) {
@@ -244,6 +294,11 @@ shapefile_read_double_le(shapefile_t *shapefile, FILE *f, double *value, int32_t
     return true;
 }
 
+#if 0
+//The documentation talks about the sizes as 16 bit numbers, but i haven't found a file that actually
+//uses two 16 bit fields to make a 32 bit field.
+//Maybe they don't exist anymore?
+//Maybe they're written to file as a 32 bit field?
 static bool
 shapefile_read_int32_size_be(shapefile_t *shapefile, FILE *f, int32_t *value, int32_t *length) {
     int16_t low, high;
@@ -258,6 +313,7 @@ shapefile_read_int32_size_be(shapefile_t *shapefile, FILE *f, int32_t *value, in
 
     return success;
 }
+#endif
 
 static bool
 shapefile_read_header(shapefile_t *shapefile, FILE *f, shapefile_header_t *header) {
@@ -269,7 +325,7 @@ shapefile_read_header(shapefile_t *shapefile, FILE *f, shapefile_header_t *heade
               shapefile_read_int32_be(shapefile,      f, &header->unused[2],   NULL) &&
               shapefile_read_int32_be(shapefile,      f, &header->unused[3],   NULL) &&
               shapefile_read_int32_be(shapefile,      f, &header->unused[4],   NULL) &&
-              shapefile_read_int32_size_be(shapefile, f, &header->length,      NULL) &&
+              shapefile_read_int32_be(shapefile, f, &header->length,      NULL) &&
               shapefile_read_int32_le(shapefile,      f, &header->version,     NULL) &&
               shapefile_read_int32_le(shapefile,      f, &header->type,        NULL) &&
               shapefile_read_double_le(shapefile,     f, &header->mbr.min_x,   NULL) &&
@@ -308,7 +364,7 @@ shapefile_read_header(shapefile_t *shapefile, FILE *f, shapefile_header_t *heade
 static bool
 shapefile_read_shp_record_header(shapefile_t *shapefile, FILE *f, shapefile_shp_record_header_t *header, int32_t *length) {
     return shapefile_read_int32_be(shapefile,      shapefile->shp.f, &header->number, length) &&
-           shapefile_read_int32_size_be(shapefile, shapefile->shp.f, &header->length, length);
+           shapefile_read_int32_be(shapefile, shapefile->shp.f, &header->length, length);
 }
 
 static bool
@@ -444,9 +500,12 @@ shapefile_parse_shp(shapefile_t *shapefile, const char *path_prefix, bool *stop,
     }
 
     if (success) {
-        length = shapefile->shp.header.length - SHAPEFILE_HEADER_SIZE;
+        //IMPORTANT!!! the sizes are the number of 16bit words in the file, so we need to muliply by sizeof(int16_t) to get bytes
+        //also, the size includes the size of the header so decrease that immediately
+        length = (shapefile->shp.header.length * sizeof(int16_t)) - SHAPEFILE_HEADER_SIZE;
 
         while (success && !*stop && length > 0) {
+
             success = shapefile_read_shp_record_header(shapefile, shapefile->shp.f, &record_header, &length);
             if (!success) {
                 break;
@@ -463,6 +522,7 @@ shapefile_parse_shp(shapefile_t *shapefile, const char *path_prefix, bool *stop,
                 *stop = !cb->shape(record.shape, cb->user_data);
 
                 shapefile_shape_free(record.shape);
+                record.shape = NULL;
             }
             else {
                 //adding to a list?
@@ -512,6 +572,16 @@ shapefile_parse_cb(shapefile_t *shapefile, const char *path, shapefile_parse_cb_
 
     success = shapefile_parse_shx(shapefile, path_prefix) &&
               shapefile_parse_shp(shapefile, path_prefix, &stop, cb);
+
+    if (shapefile->shx.f != NULL) {
+        fclose(shapefile->shx.f);
+        shapefile->shx.f = NULL;
+    }
+
+    if (shapefile->shp.f != NULL) {
+        fclose(shapefile->shp.f);
+        shapefile->shp.f = NULL;
+    }
 
     free(path_prefix);
     return success;

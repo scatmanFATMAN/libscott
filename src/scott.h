@@ -10,3 +10,4 @@
 #include "hash.h"
 #include "lock.h"
 #include "queue.h"
+#include "shapefile.h"

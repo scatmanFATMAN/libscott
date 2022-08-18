@@ -25,9 +25,18 @@ typedef struct {
     void *user_data;
 } shapefile_parse_cb_t;
 
+/*****************************************************************************
+ * shapefile
+ ****************************************************************************/
+
 shapefile_t * shapefile_init();
 void shapefile_free(shapefile_t *shapefile);
 
 bool shapefile_parse_cb(shapefile_t *shapefile, const char *path, shapefile_parse_cb_t *cb);
 
 const char * shapefile_error(shapefile_t *shapefile);
+
+/*****************************************************************************
+ * shapefile_shape
+ ****************************************************************************/
+char * shapefile_shape_wkt(shapefile_shape_t *shape);
