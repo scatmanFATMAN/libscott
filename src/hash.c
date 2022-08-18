@@ -3,7 +3,7 @@
  */
 
 #include <stdlib.h>
-#include <string.h>
+#include "string.h"
 #include "alist.h"
 #include "hash.h"
 
